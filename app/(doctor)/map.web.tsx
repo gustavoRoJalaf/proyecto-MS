@@ -1,18 +1,33 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import L from 'leaflet';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../store/AuthContext';
 import { MOCK_DOCTORS, MOCK_PATIENTS } from '../../store/appStore';
 import { Colors } from '../../constants/colors';
-import Card from '../../components/Card';
-import StatusBadge from '../../components/StatusBadge';
 
 const VISIT_STATUSES = [
-  { key: 'available', label: 'Disponible', icon: 'checkmark-circle', color: Colors.success },
-  { key: 'en_route', label: 'En Camino', icon: 'navigate', color: Colors.primary },
-  { key: 'visiting', label: 'En Visita', icon: 'home', color: Colors.warning },
-  { key: 'completed', label: 'Completado', icon: 'flag', color: Colors.textSecondary },
+  { key: 'available', label: 'Disponible', color: Colors.success },
+  { key: 'en_route', label: 'En Camino', color: Colors.primary },
+  { key: 'visiting', label: 'En Visita', color: Colors.warning },
+  { key: 'completed', label: 'Completado', color: Colors.textSecondary },
 ] as const;
+
+function makeDivIcon(color: string, emoji: string, size = 34) {
+  return L.divIcon({
+    html: `<div style="
+      background:${color};width:${size}px;height:${size}px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      border:2.5px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);
+      font-size:${Math.round(size * 0.45)}px;line-height:1;
+    ">${emoji}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -(size / 2 + 4)],
+    className: '',
+  });
+}
 
 export default function DoctorMapScreen() {
   const { user } = useAuth();
@@ -20,143 +35,178 @@ export default function DoctorMapScreen() {
   const myPatients = MOCK_PATIENTS.filter(p => doctor?.assignedPatients.includes(p.id));
 
   const [visitStatus, setVisitStatus] = useState(doctor?.visitStatus ?? 'available');
-  const [selectedPatientId, setSelectedPatientId] = useState(myPatients[0]?.id);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(myPatients[0]?.id ?? null);
   const selectedPatient = myPatients.find(p => p.id === selectedPatientId);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+    return () => { document.head.removeChild(link); };
+  }, []);
+
+  const statusColor = VISIT_STATUSES.find(s => s.key === visitStatus)?.color ?? Colors.primary;
+  const center = doctor
+    ? [doctor.location.latitude, doctor.location.longitude] as [number, number]
+    : [-33.44, -70.604] as [number, number];
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Map notice */}
-      <View style={styles.mapNotice}>
-        <Ionicons name="map-outline" size={32} color={Colors.textLight} />
-        <Text style={styles.mapNoticeText}>Mapa GPS disponible en la app móvil</Text>
-        <Text style={styles.mapNoticeSub}>Usa la app Expo Go en tu celular para ver el mapa interactivo</Text>
+    <View style={styles.container}>
+      {/* Map */}
+      <View style={styles.mapWrapper}>
+        <MapContainer center={center} zoom={13} style={{ width: '100%', height: '100%' }}>
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+
+          {/* Doctor marker */}
+          {doctor && (
+            <Marker
+              position={[doctor.location.latitude, doctor.location.longitude]}
+              icon={makeDivIcon(statusColor, '🏥', 40)}
+            >
+              <Popup>
+                <strong>Dr. {doctor.firstName} {doctor.lastName}</strong><br />
+                {doctor.specialty}<br />
+                Estado: {VISIT_STATUSES.find(s => s.key === visitStatus)?.label}
+              </Popup>
+            </Marker>
+          )}
+
+          {/* Patient markers */}
+          {myPatients.map(p => (
+            <Marker
+              key={p.id}
+              position={[p.location.latitude, p.location.longitude]}
+              icon={makeDivIcon(
+                selectedPatientId === p.id ? Colors.warning : Colors.patientColor,
+                '👤',
+                selectedPatientId === p.id ? 40 : 32
+              )}
+              eventHandlers={{ click: () => setSelectedPatientId(p.id) }}
+            >
+              <Popup>
+                <strong>{p.firstName} {p.lastName}</strong><br />
+                {p.rut}<br />
+                {p.diagnosis}<br />
+                📍 {p.address}
+              </Popup>
+            </Marker>
+          ))}
+
+          {/* Route line to selected patient */}
+          {doctor && selectedPatient && (
+            <Polyline
+              positions={[
+                [doctor.location.latitude, doctor.location.longitude],
+                [selectedPatient.location.latitude, selectedPatient.location.longitude],
+              ]}
+              color={statusColor}
+              weight={3}
+              dashArray="10, 6"
+              opacity={0.85}
+            />
+          )}
+        </MapContainer>
       </View>
 
-      {/* Visit Status */}
-      <Text style={styles.sectionLabel}>Estado de Visita</Text>
-      <View style={styles.statusRow}>
-        {VISIT_STATUSES.map(s => (
-          <TouchableOpacity
-            key={s.key}
-            style={[styles.statusBtn, visitStatus === s.key && { backgroundColor: s.color, borderColor: s.color }]}
-            onPress={() => setVisitStatus(s.key)}
-          >
-            <Ionicons name={s.icon as any} size={14} color={visitStatus === s.key ? Colors.surface : s.color} />
-            <Text style={[styles.statusBtnText, visitStatus === s.key && { color: Colors.surface }]}>
-              {s.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Right panel */}
+      <View style={styles.panel}>
+        {/* Visit status */}
+        <Text style={styles.sectionLabel}>Estado de Visita</Text>
+        <View style={styles.statusGrid}>
+          {VISIT_STATUSES.map(s => (
+            <TouchableOpacity
+              key={s.key}
+              style={[styles.statusBtn, visitStatus === s.key && { backgroundColor: s.color, borderColor: s.color }]}
+              onPress={() => setVisitStatus(s.key)}
+            >
+              <View style={[styles.statusDot, { backgroundColor: visitStatus === s.key ? Colors.surface : s.color }]} />
+              <Text style={[styles.statusBtnText, visitStatus === s.key && { color: Colors.surface }]}>
+                {s.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* Patient Selector */}
-      <Text style={styles.sectionLabel}>Mis Pacientes</Text>
-      {myPatients.map(patient => (
-        <TouchableOpacity key={patient.id} onPress={() => setSelectedPatientId(patient.id)} activeOpacity={0.8}>
-          <Card style={[styles.patientCard, selectedPatientId === patient.id && styles.patientCardSelected]}>
-            <View style={styles.patientRow}>
-              <View style={[styles.avatar, { backgroundColor: Colors.patientColor }]}>
-                <Ionicons name="person" size={18} color={Colors.surface} />
+        {/* Patient list */}
+        <Text style={styles.sectionLabel}>Mis Pacientes</Text>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {myPatients.map(p => (
+            <TouchableOpacity
+              key={p.id}
+              style={[styles.patientCard, selectedPatientId === p.id && styles.patientCardSelected]}
+              onPress={() => setSelectedPatientId(p.id)}
+              activeOpacity={0.75}
+            >
+              <View style={[styles.avatar, { backgroundColor: selectedPatientId === p.id ? Colors.warning : Colors.patientColor }]}>
+                <Text style={{ fontSize: 14 }}>👤</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.patientName}>{patient.firstName} {patient.lastName}</Text>
-                <Text style={styles.patientRut}>{patient.rut}</Text>
-                <Text style={styles.patientDiag} numberOfLines={1}>{patient.diagnosis}</Text>
+                <Text style={styles.patientName}>{p.firstName} {p.lastName}</Text>
+                <Text style={styles.patientRut}>{p.rut}</Text>
+                <Text style={styles.patientDiag} numberOfLines={1}>{p.diagnosis}</Text>
               </View>
-              <Ionicons
-                name={selectedPatientId === patient.id ? 'chevron-down' : 'chevron-forward'}
-                size={16} color={Colors.textLight}
-              />
-            </View>
+              {selectedPatientId === p.id && (
+                <Ionicons name="navigate" size={16} color={statusColor} />
+              )}
+            </TouchableOpacity>
+          ))}
 
-            {selectedPatientId === patient.id && (
-              <View style={styles.expandedInfo}>
-                <View style={styles.infoRow}>
-                  <Ionicons name="location-outline" size={13} color={Colors.accent} />
-                  <Text style={styles.infoText}>{patient.address}</Text>
-                </View>
-                <View style={styles.coordRow}>
-                  <View style={styles.coordChip}>
-                    <Ionicons name="navigate-outline" size={12} color={Colors.primary} />
-                    <Text style={styles.coordText}>
-                      {patient.location.latitude.toFixed(4)}, {patient.location.longitude.toFixed(4)}
-                    </Text>
-                  </View>
-                </View>
-                {visitStatus === 'available' && (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: Colors.primary }]}
-                    onPress={() => setVisitStatus('en_route')}
-                  >
-                    <Ionicons name="navigate" size={15} color={Colors.surface} />
-                    <Text style={styles.actionBtnText}>Iniciar Ruta</Text>
-                  </TouchableOpacity>
-                )}
-                {visitStatus === 'en_route' && (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: Colors.warning }]}
-                    onPress={() => setVisitStatus('visiting')}
-                  >
-                    <Ionicons name="home" size={15} color={Colors.surface} />
-                    <Text style={styles.actionBtnText}>Marcar En Visita</Text>
-                  </TouchableOpacity>
-                )}
-                {visitStatus === 'visiting' && (
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: Colors.success }]}
-                    onPress={() => setVisitStatus('completed')}
-                  >
-                    <Ionicons name="checkmark-circle" size={15} color={Colors.surface} />
-                    <Text style={styles.actionBtnText}>Finalizar Visita</Text>
-                  </TouchableOpacity>
-                )}
+          {/* Selected patient detail */}
+          {selectedPatient && (
+            <View style={styles.detailBox}>
+              <View style={styles.detailRow}>
+                <Ionicons name="location-outline" size={13} color={Colors.accent} />
+                <Text style={styles.detailText}>{selectedPatient.address}</Text>
               </View>
-            )}
-          </Card>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
+              {visitStatus === 'available' && (
+                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.primary }]} onPress={() => setVisitStatus('en_route')}>
+                  <Ionicons name="navigate" size={15} color={Colors.surface} />
+                  <Text style={styles.actionBtnText}>Iniciar Ruta</Text>
+                </TouchableOpacity>
+              )}
+              {visitStatus === 'en_route' && (
+                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.warning }]} onPress={() => setVisitStatus('visiting')}>
+                  <Ionicons name="home" size={15} color={Colors.surface} />
+                  <Text style={styles.actionBtnText}>Marcar En Visita</Text>
+                </TouchableOpacity>
+              )}
+              {visitStatus === 'visiting' && (
+                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.success }]} onPress={() => setVisitStatus('completed')}>
+                  <Ionicons name="checkmark-circle" size={15} color={Colors.surface} />
+                  <Text style={styles.actionBtnText}>Finalizar Visita</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </ScrollView>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  content: { padding: 14, gap: 10, paddingBottom: 30 },
-  mapNotice: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
-    padding: 20, alignItems: 'center', gap: 6,
-  },
-  mapNoticeText: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
-  mapNoticeSub: { fontSize: 12, color: Colors.textLight, textAlign: 'center' },
-  sectionLabel: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 4 },
-  statusRow: { flexDirection: 'row', gap: 8 },
-  statusBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, borderRadius: 20, paddingVertical: 8,
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
-  },
-  statusBtnText: { fontSize: 10, fontWeight: '600', color: Colors.textSecondary },
-  patientCard: { marginBottom: 4 },
-  patientCardSelected: { borderColor: Colors.patientColor, borderWidth: 1.5 },
-  patientRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  avatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  patientName: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
-  patientRut: { fontSize: 11, color: Colors.textSecondary },
+  container: { flex: 1, flexDirection: 'row', backgroundColor: Colors.background },
+  mapWrapper: { flex: 1, overflow: 'hidden' as any },
+  panel: { width: 260, backgroundColor: Colors.surface, padding: 14, borderLeftWidth: 1, borderLeftColor: Colors.border },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8, marginTop: 4 },
+  statusGrid: { gap: 6, marginBottom: 14 },
+  statusBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  statusBtnText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  patientCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, marginBottom: 6, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface },
+  patientCardSelected: { borderColor: Colors.warning, backgroundColor: Colors.warning + '0A' },
+  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  patientName: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary },
+  patientRut: { fontSize: 10, color: Colors.textSecondary },
   patientDiag: { fontSize: 11, color: Colors.doctorColor, fontWeight: '500' },
-  expandedInfo: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.border, gap: 8 },
-  infoRow: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
-  infoText: { flex: 1, fontSize: 13, color: Colors.textSecondary },
-  coordRow: { flexDirection: 'row' },
-  coordChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: Colors.primary + '10', borderRadius: 6,
-    paddingHorizontal: 8, paddingVertical: 4,
-  },
-  coordText: { fontSize: 11, color: Colors.primary, fontWeight: '500' },
-  actionBtn: {
-    borderRadius: 8, flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'center', gap: 6, paddingVertical: 10,
-  },
-  actionBtnText: { color: Colors.surface, fontWeight: '700', fontSize: 14 },
+  detailBox: { backgroundColor: Colors.background, borderRadius: 10, padding: 12, gap: 8, marginTop: 4 },
+  detailRow: { flexDirection: 'row', gap: 6, alignItems: 'flex-start' },
+  detailText: { flex: 1, fontSize: 12, color: Colors.textSecondary },
+  actionBtn: { borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10 },
+  actionBtnText: { color: Colors.surface, fontWeight: '700', fontSize: 13 },
 });
