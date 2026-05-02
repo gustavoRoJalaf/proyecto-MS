@@ -1,0 +1,18 @@
+export const Colors = {
+  primary: '#0A6EBD',
+  primaryDark: '#084F8C',
+  primaryLight: '#3A9DE0',
+  secondary: '#17A589',
+  accent: '#E74C3C',
+  warning: '#F39C12',
+  success: '#27AE60',
+  background: '#F4F6F9',
+  surface: '#FFFFFF',
+  border: '#DDE2EA',
+  textPrimary: '#1A2B4A',
+  textSecondary: '#6B7A99',
+  textLight: '#A0AABF',
+  patientColor: '#8E44AD',
+  doctorColor: '#17A589',
+  adminColor: '#E67E22',
+};
