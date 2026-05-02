@@ -3,7 +3,11 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Dimensions, Platform, Alert,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+const _maps = Platform.OS !== 'web' ? require('react-native-maps') : {};
+const MapView: any = _maps.default ?? (() => null);
+const Marker: any = _maps.Marker ?? (() => null);
+const Polyline: any = _maps.Polyline ?? (() => null);
+const PROVIDER_GOOGLE: any = _maps.PROVIDER_GOOGLE ?? null;
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../store/AuthContext';
