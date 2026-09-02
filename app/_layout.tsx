@@ -1,6 +1,7 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { AuthProvider, useAuth } from '../store/AuthContext';
+import { AppDataProvider } from '../store/AppDataContext';
 import { StatusBar } from 'expo-status-bar';
 
 function RootGuard() {
@@ -25,9 +26,11 @@ function RootGuard() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <StatusBar style="light" />
-      <RootGuard />
-    </AuthProvider>
+    <AppDataProvider>
+      <AuthProvider>
+        <StatusBar style="light" />
+        <RootGuard />
+      </AuthProvider>
+    </AppDataProvider>
   );
 }

@@ -36,6 +36,13 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
+        name="doctors"
+        options={{
+          title: 'Médicos',
+          tabBarIcon: ({ color, size }) => <Ionicons name="medkit" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="documents"
         options={{
           title: 'Documentos',
